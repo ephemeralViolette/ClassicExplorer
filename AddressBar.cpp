@@ -1,0 +1,778 @@
+/*
+ * AddressBar.cpp: Implements the address bar toolbar.
+ */
+
+#include "stdafx.h"
+#include "framework.h"
+#include "resource.h"
+#include "ClassicExplorer_i.h"
+#include "dllmain.h"
+#include <commoncontrols.h>
+#include "shell_helpers.h"
+
+#include "AddressBar.h"
+
+/*
+ * OnCreate: Handle the WM_CREATE message sent out and create the address bar controls.
+ */
+LRESULT AddressBar::OnCreate(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled)
+{
+	HINSTANCE moduleInstance = _AtlBaseModule.GetModuleInstance();
+
+	m_showGoButton = TRUE;
+
+	m_toolbar = CreateWindowEx(
+		WS_EX_TOOLWINDOW,
+		WC_COMBOBOXEXW,
+		NULL,
+		WS_CHILD | WS_CLIPCHILDREN | WS_VISIBLE | WS_TABSTOP | CCS_NODIVIDER | CCS_NOMOVEY | CBS_OWNERDRAWFIXED,
+		0, 0, 500, 250,
+		m_hWnd,
+		NULL,
+		moduleInstance,
+		NULL
+	);
+
+	if (m_toolbar == NULL)
+	{
+		return E_FAIL;
+	}
+
+	SetWindowSubclass(m_toolbar, ComboboxSubclassProc, (UINT_PTR)this, (DWORD_PTR)this);
+
+	::SendMessageW(m_toolbar, CB_SETITEMHEIGHT, -1, 16);
+	::SendMessageW(
+		m_toolbar,
+		CBEM_SETEXTENDEDSTYLE,
+		CBES_EX_CASESENSITIVE | CBES_EX_NOSIZELIMIT,
+		CBES_EX_CASESENSITIVE | CBES_EX_NOSIZELIMIT
+	);
+	m_comboBox = (HWND)::SendMessageW(m_toolbar, CBEM_GETCOMBOCONTROL, 0, 0);
+	m_comboBoxEditCtl = (HWND)::SendMessageW(m_toolbar, CBEM_GETEDITCONTROL, 0, 0);
+
+	SetWindowSubclass(m_comboBox, RealComboboxSubclassProc, (UINT_PTR)this, (DWORD_PTR)this);
+	SetWindowSubclass(m_comboBoxEditCtl, RealComboboxSubclassProc, (UINT_PTR)this, (DWORD_PTR)this);
+
+	// Set the address bar combobox to use the shell image list.
+	// This is required in order for icons to be able to render in the address bar.
+	IImageList *piml;
+	SHGetImageList(SHIL_SMALL, IID_IImageList, (void**)&piml);
+	if (piml)
+	{
+		::SendMessageW(
+			m_toolbar,
+			CBEM_SETIMAGELIST,
+			0,
+			(LPARAM)piml
+		);
+	}
+
+	// Provides autocomplete capabilities to the combobox editor.
+	// This is a standard shell API, surprisingly enough.
+	SHAutoComplete(m_comboBoxEditCtl, SHACF_FILESYSTEM | SHACF_URLALL | SHACF_USETAB);
+
+	if (m_showGoButton)
+	{
+		CreateGoButton();
+	}
+
+	return S_OK;
+}
+
+/*
+ * CreateGoButton: Creates the control window for the "Go" button.
+ * 
+ * TODO: Implement the ability to properly toggle this feature.
+ */
+LRESULT AddressBar::CreateGoButton()
+{
+	HINSTANCE moduleInstance = _AtlBaseModule.GetModuleInstance();
+
+	const TBBUTTON goButtonInfo[] = { {0, 1, TBSTATE_ENABLED, 0} };
+	HINSTANCE resourceInstance = _AtlBaseModule.GetResourceInstance();
+
+	m_himlGoInactive = ImageList_LoadImageW(
+		resourceInstance,
+		MAKEINTRESOURCEW(IDB_GO_INACTIVE),
+		20,
+		0,
+		RGB(255, 0, 255),
+		IMAGE_BITMAP,
+		LR_CREATEDIBSECTION
+	);
+
+	m_himlGoActive = ImageList_LoadImageW(
+		resourceInstance,
+		MAKEINTRESOURCEW(IDB_GO_ACTIVE),
+		20,
+		0,
+		RGB(255, 0, 255),
+		IMAGE_BITMAP,
+		LR_CREATEDIBSECTION
+	);
+
+	m_goButton = CreateWindowEx(
+		WS_EX_TOOLWINDOW,
+		TOOLBARCLASSNAMEW,
+		NULL,
+		WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | TBSTYLE_LIST | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS |
+		CCS_NODIVIDER | CCS_NOPARENTALIGN | CCS_NORESIZE,
+		0, 0, 50, 50,
+		m_toolbar,
+		NULL,
+		moduleInstance,
+		NULL
+	);
+
+	if (!m_goButton)
+	{
+		return E_FAIL;
+	}
+
+	::SendMessage(m_goButton, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0); // 1 button
+	::SendMessage(m_goButton, TB_SETMAXTEXTROWS, 1, 0);
+
+	if (m_himlGoInactive)
+		::SendMessage(m_goButton, TB_SETIMAGELIST, 0, (LPARAM)m_himlGoInactive);
+
+	if (m_himlGoActive)
+		::SendMessage(m_goButton, TB_SETHOTIMAGELIST, 0, (LPARAM)m_himlGoActive);
+
+	WCHAR pwszGoLabel[255];
+
+	// Load "Go" string from resources.
+	if (!LoadStringW(
+		_AtlBaseModule.GetResourceInstance(),
+		IDS_GOBUTTONLABEL,
+		pwszGoLabel,
+		_countof(pwszGoLabel)
+	))
+	{
+		return HRESULT_FROM_WIN32(GetLastError());
+	}
+
+	::SendMessage(m_goButton, TB_ADDSTRINGW, 0, (LPARAM)pwszGoLabel);
+
+	// add the go button:
+	::SendMessage(m_goButton, TB_ADDBUTTONSW, 1, (LPARAM)&goButtonInfo);
+	::SendMessage(m_goButton, TB_AUTOSIZE, 0, 0);
+	::ShowWindow(m_goButton, TRUE);
+
+	return S_OK;
+}
+
+/*
+ * InitComboBox: Initialise the address bar combobox.
+ * 
+ * This is only called once every time a new explorer window is opened.
+ */
+HRESULT AddressBar::InitComboBox()
+{
+	RefreshCurrentAddress();
+
+	return S_OK;
+}
+
+/*
+ * OnDestroy: Handle WM_DESTROY messages.
+ */
+LRESULT AddressBar::OnDestroy(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled)
+{
+	return 0;
+}
+
+/*
+ * OnComponentNotifyClick: Handle click events sent out to other components:
+ *                         notably, the go button.
+ */
+LRESULT AddressBar::OnComponentNotifyClick(WPARAM wParam, LPNMHDR notifyHeader, BOOL &bHandled)
+{
+	if (notifyHeader->hwndFrom == m_goButton)
+	{
+		this->Execute();
+	}
+
+	return 0;
+}
+
+/*
+ * OnNotify: Handle WM_NOTIFY messages.
+ * 
+ * This is used in order to respond to events sent out from the combobox for UX
+ * reasons, such as switching the display text with the full path when clicked.
+ */
+LRESULT AddressBar::OnNotify(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled)
+{
+	LPNMHDR hdr = (LPNMHDR)lParam;
+
+	if (hdr->code == CBEN_ENDEDITW)
+	{
+		NMCBEENDEDITW *endEdit = (NMCBEENDEDITW *)lParam;
+		if (endEdit->iWhy == CBENF_RETURN)
+		{
+			this->Execute();
+		}
+		else if (endEdit->iWhy = CBENF_ESCAPE)
+		{
+			RefreshCurrentAddress();
+		}
+	}
+	else if (hdr->code == CBEN_BEGINEDIT)
+	{
+		//PNMCBEENDEDITW *beginEdit = (PNMCBEENDEDITW *)lParam;
+
+		if (m_locationHasPhysicalPath)
+		{
+			::SetWindowTextW(m_comboBoxEditCtl, m_currentPath);
+			::SendMessageW(m_comboBoxEditCtl, EM_SETSEL, 0, -1);
+		}
+	}
+
+	return S_OK;
+}
+
+/*
+ * ComboboxSubclassProc: Overrides the handling of messages sent to the combobox.
+ * 
+ * This is used for properly sizing and positioning the address bar controls,
+ * among other things.
+ */
+LRESULT CALLBACK AddressBar::ComboboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+	AddressBar *self = (AddressBar *)dwRefData;
+
+	if (uMsg == WM_SIZE || uMsg == WM_WINDOWPOSCHANGING)
+	{
+		RECT rcGoButton;
+		RECT rcComboBox;
+		RECT rcRefresh;
+
+		long newHeight;
+		long newWidth;
+
+		if (uMsg == WM_SIZE)
+		{
+			newHeight = HIWORD(lParam);
+			newWidth = LOWORD(lParam);
+		}
+		else if (uMsg == WM_WINDOWPOSCHANGING)
+		{
+			WINDOWPOS pos = *(WINDOWPOS *)lParam;
+			newHeight = pos.cy;
+			newWidth = pos.cx;
+		}
+
+		// Declare margins:
+		constexpr int addressRightMargin = 2;
+		int goRightMargin = 0; // Assuming go button is not displayed.
+
+		long goButtonWidth = 0;
+		long goButtonHeight = 0;
+		if (self->m_showGoButton)
+		{
+			::SendMessageW(self->m_goButton, TB_GETITEMRECT, 0, (LPARAM)&rcGoButton);
+			goButtonWidth = rcGoButton.right - rcGoButton.left;
+			goButtonHeight = rcGoButton.bottom - rcGoButton.top;
+
+			// Set the right margin of the go button to also display.
+			goRightMargin = 2;
+		}
+
+		if (uMsg == WM_SIZE)
+		{
+			DefSubclassProc(hWnd, WM_SIZE, wParam, MAKELONG(newWidth - goButtonWidth - 2, newHeight));
+		}
+		else if (uMsg == WM_WINDOWPOSCHANGING)
+		{
+			WINDOWPOS pos = *(WINDOWPOS *)lParam;
+			pos.cx = newWidth - addressRightMargin - goButtonWidth - goRightMargin;
+
+			DefSubclassProc(hWnd, WM_WINDOWPOSCHANGING, wParam, (LPARAM)&pos);
+		}
+
+		if (self->m_showGoButton)
+		{
+			::GetWindowRect(self->m_comboBox, &rcComboBox);
+			::SetWindowPos(
+				self->m_goButton,
+				NULL,
+				newWidth - goButtonWidth - goRightMargin,
+				(rcComboBox.bottom - rcComboBox.top - goButtonHeight) / 2,
+				goButtonWidth,
+				goButtonHeight,
+				SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOZORDER
+			);
+		}
+
+		return 0;
+	}
+	else if (uMsg == WM_ERASEBKGND)
+	{
+		POINT pt = { 0, 0 }, ptOrig;
+		HWND parentWindow = self->GetParent();
+		::MapWindowPoints(hWnd, parentWindow, &pt, 1);
+		OffsetWindowOrgEx((HDC)wParam, pt.x, pt.y, &ptOrig);
+
+		LRESULT result = SendMessage(parentWindow, WM_ERASEBKGND, wParam, 0);
+		SetWindowOrgEx((HDC)wParam, ptOrig.x, ptOrig.y, NULL);
+
+		return result;
+	}
+
+	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+/*
+ * RealComboboxSubclassProc: todo?
+ */
+LRESULT CALLBACK AddressBar::RealComboboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+	AddressBar *self = (AddressBar *)dwRefData;
+
+	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+/*
+ * SetBrowsers: Set the browser interfaces to use for navigation purposes.
+ */
+void AddressBar::SetBrowsers(CComPtr<IShellBrowser> pShellBrowser, CComPtr<IWebBrowser2> pWebBrowser)
+{
+	m_pShellBrowser = pShellBrowser;
+	m_pWebBrowser = pWebBrowser;
+}
+
+/*
+ * HandleNavigate: Handle a browser navigation event.
+ */
+HRESULT AddressBar::HandleNavigate()
+{
+	RefreshCurrentAddress();
+
+	return S_OK;
+}
+
+/*
+ * RefreshCurrentAddress: Get the respective display name or address of the
+ *                        current explorer page and configure the address
+ *                        bar respectively.
+ * 
+ * TODO: Split this up into smaller utility functions for code reuse purposes.
+ */
+HRESULT AddressBar::RefreshCurrentAddress()
+{
+	HRESULT hr = NULL;
+	PIDLIST_ABSOLUTE pidlCurrentFolder;
+	CComPtr<IKnownFolderManager> pKnownFolderManager;
+	CComPtr<IKnownFolder> pKnownFolder;
+
+	hr = GetCurrentFolderPidl(&pidlCurrentFolder);
+
+	if (hr != S_OK)
+		return hr;
+
+	// Get the display text (current path or folder display name)
+	ZeroMemory(m_displayName, ARRAYSIZE(m_displayName));
+	ZeroMemory(m_currentPath, ARRAYSIZE(m_currentPath));
+
+	hr = pKnownFolderManager.CoCreateInstance(CLSID_KnownFolderManager);
+
+	if (hr != S_OK)
+		return hr;
+
+	HRESULT isKnownFolder = pKnownFolderManager->FindFolderFromIDList(
+		pidlCurrentFolder,
+		&pKnownFolder
+	);
+
+	m_locationHasPhysicalPath = SHGetPathFromIDListW(pidlCurrentFolder, m_currentPath);
+
+	// If the check if it's a known folder failed, then the path must be physical:
+	if (FAILED(isKnownFolder))
+	{
+		BOOL hasPath = SUCCEEDED(
+			ShellHelpers::GetLocalizedDisplayPath(
+				m_currentPath, 
+				m_displayName, 
+				ARRAYSIZE(m_displayName)
+			)
+		);
+
+		// In the case this fails, just put the display name of the folder in its place.
+		if (!m_locationHasPhysicalPath)
+		{
+			hr = GetCurrentFolderName(m_displayName, ARRAYSIZE(m_displayName));
+
+			if (hr != S_OK)
+				return hr;
+		}
+	}
+	else
+	{
+		// Known folders can also return a display name that is just a path. In order for
+		// localized display paths to work, this needs to be accounted for.
+		WCHAR buf[1024];
+		hr = GetCurrentFolderName(buf, ARRAYSIZE(buf));
+
+		if (hr != S_OK)
+			return hr;
+
+		BOOL shouldCopy = TRUE;
+
+		if (ShellHelpers::IsStringPath(buf) && m_locationHasPhysicalPath)
+		{
+			// If this fails, then it will just copy the original.
+			shouldCopy = !SUCCEEDED(
+				ShellHelpers::GetLocalizedDisplayPath(
+					m_currentPath,
+					m_displayName,
+					ARRAYSIZE(m_displayName)
+				)
+			);
+		}
+
+		if (shouldCopy)
+		{
+			wcscpy_s(m_displayName, buf);
+		}
+	}
+
+	// Get the folder icon
+	CComPtr<IShellFolder> pShellFolder;
+	PCITEMID_CHILD pidlChild;
+
+	hr = SHBindToParent(
+		pidlCurrentFolder,
+		IID_IShellFolder,
+		(void **)&pShellFolder,
+		&pidlChild
+	);
+
+	// Create the combobox item
+	COMBOBOXEXITEMW item = { CBEIF_IMAGE | CBEIF_SELECTEDIMAGE | CBEIF_TEXT };
+	item.iItem = -1; // -1 = selected item
+	item.iImage = SHMapPIDLToSystemImageListIndex(
+		pShellFolder,
+		pidlChild,
+		&item.iSelectedImage
+	);
+	item.pszText = m_displayName;
+
+	::SendMessageW(
+		m_toolbar,
+		CBEM_SETITEMW,
+		0,
+		(LPARAM)&item
+	);
+
+	pShellFolder.Release();
+	pKnownFolder.Release();
+	pKnownFolderManager.Release();
+
+	return S_OK;
+}
+
+/*
+ * GetCurrentAddressText: Get the current text in the address bar.
+ */
+BOOL AddressBar::GetCurrentAddressText(CComHeapPtr<WCHAR> &pszText)
+{
+	pszText.Free();
+
+	INT cchMax = ::GetWindowTextLengthW(m_comboBoxEditCtl) + sizeof(UNICODE_NULL);
+	if (!pszText.Allocate(cchMax))
+		return FALSE;
+
+	return ::GetWindowTextW(m_comboBoxEditCtl, pszText, cchMax);
+}
+
+/*
+ * Execute: Perform the browse action with the requested address.
+ */
+HRESULT AddressBar::Execute()
+{
+	HRESULT hr = E_FAIL;
+	PIDLIST_RELATIVE parsedPidl;
+	
+	// have to be initialised before goto cleanup...
+	CComPtr<IShellFolder> pShellFolder;
+	CComPtr<IShellFolder> pShellFolder2;
+
+	hr = ParseAddress(&parsedPidl);
+
+	if (hr == HRESULT_FROM_WIN32(ERROR_INVALID_DRIVE) || hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+	{
+		ILFree(parsedPidl);
+
+		if (SUCCEEDED(ExecuteCommandLine()))
+			return S_OK;
+
+		// TODO: file not found message box:
+		return E_FAIL;
+	}
+
+	if (!parsedPidl)
+	{
+		return E_FAIL;
+	}
+
+	PIDLIST_ABSOLUTE pidlCurrentFolder;
+	hr = GetCurrentFolderPidl(&pidlCurrentFolder);
+	if (FAILED(hr))
+		goto cleanup;
+
+	
+	hr = SHGetDesktopFolder(&pShellFolder);
+	if (FAILED(hr))
+		goto cleanup;
+
+	hr = pShellFolder->CompareIDs(0, pidlCurrentFolder, parsedPidl);
+
+	SHFree(pidlCurrentFolder);
+	if (hr == 0)
+		goto cleanup;
+
+	hr = m_pShellBrowser->BrowseObject(parsedPidl, 0);
+	if (SUCCEEDED(hr))
+		goto cleanup;
+
+	HWND topLevelWindow;
+	hr = IUnknown_GetWindow(m_pShellBrowser, &topLevelWindow);
+	if (FAILED(hr))
+		goto cleanup;
+
+	PCUITEMID_CHILD pidlChild;
+	hr = SHBindToParent(
+		(PCIDLIST_ABSOLUTE)parsedPidl,
+		IID_IShellFolder,
+		(void **)&pShellFolder2,
+		&pidlChild
+	);
+	if (FAILED(hr))
+		goto cleanup;
+
+	// TODO: steal SHInvokeDefaultCommand stuff from WinAPI and ReactOS...
+
+	cleanup:
+		ILFree(parsedPidl);
+
+	return hr;
+}
+
+/*
+ * ParseAddress: Parse the browser address into m_lastParsedPidl.
+ */
+HRESULT AddressBar::ParseAddress(PIDLIST_RELATIVE *pidlOut)
+{
+	HRESULT hr = E_FAIL;
+
+	ULONG eaten = NULL, attributes = NULL;
+	HWND topLevelWindow = NULL;
+	PIDLIST_RELATIVE relativePidl = NULL;
+
+	// Must be initialised before any gotos...
+	CComPtr<IShellFolder> pCurrentFolder = NULL;
+	PIDLIST_ABSOLUTE currentPidl = NULL;
+
+	// TODO: what is IBrowserService, how to replicate with newer code?
+	// I think it is only used for the current PIDL.
+
+	hr = IUnknown_GetWindow(m_pShellBrowser, &topLevelWindow);
+	if (FAILED(hr))
+		return hr;
+
+	CComHeapPtr<WCHAR> input, address;
+	if (!GetCurrentAddressText(input))
+		return E_FAIL;
+
+	int addressLength = (wcschr(input, L'%')) ? ::ExpandEnvironmentStringsW(input, NULL, 0) : 0;
+	if (
+		addressLength <= 0 ||
+		!address.Allocate(addressLength + 1) ||
+		!::ExpandEnvironmentStringsW(input, address, addressLength)
+	)
+	{
+		address.Free();
+		address.Attach(input.Detach());
+	}
+
+	CComPtr<IShellFolder> psfDesktop;
+	hr = SHGetDesktopFolder(&psfDesktop);
+	if (FAILED(hr))
+		goto cleanup;
+
+	// hr = pBrowserService->GetPidl(&currentPidl); // REPLICATE WITHOUT IBrowserService.
+	hr = GetCurrentFolderPidl(&currentPidl);
+	if (FAILED(hr))
+		goto parse_absolute;
+
+	hr = psfDesktop->BindToObject(
+		currentPidl,
+		NULL,
+		IID_IShellFolder,
+		(void **)&pCurrentFolder
+	);
+	if (FAILED(hr))
+		goto parse_absolute;
+
+	hr = pCurrentFolder->ParseDisplayName(
+		topLevelWindow,
+		NULL,
+		address,
+		&eaten,
+		&relativePidl,
+		&attributes
+	);
+	if (SUCCEEDED(hr))
+	{
+		*pidlOut = ILCombine(currentPidl, relativePidl);
+		ILFree(relativePidl);
+		goto cleanup;
+	}
+
+	parse_absolute:
+		// Used in case a relative path could not be parsed:
+		hr = psfDesktop->ParseDisplayName(
+			topLevelWindow,
+			NULL,
+			address,
+			&eaten,
+			pidlOut,
+			&attributes
+		);
+
+	cleanup:
+		if (currentPidl)
+			ILFree(currentPidl);
+
+	return hr;
+}
+
+/*
+ * ExecuteCommandLine: Run the text in the address bar as if it is a shell
+ *                     command.
+ */
+HRESULT AddressBar::ExecuteCommandLine()
+{
+	HRESULT hr = E_FAIL;
+
+	CComHeapPtr<WCHAR> pszCmdLine;
+	if (!GetCurrentAddressText(pszCmdLine))
+		return E_FAIL;
+
+	PWCHAR args = PathGetArgsW(pszCmdLine);
+	PathRemoveArgsW(pszCmdLine);
+	PathUnquoteSpacesW(pszCmdLine);
+
+	SHELLEXECUTEINFOW info = {
+		sizeof(info),
+		SEE_MASK_FLAG_NO_UI,
+		m_hWnd
+	};
+	info.lpFile = pszCmdLine;
+	info.lpParameters = args;
+	info.nShow = SW_SHOWNORMAL;
+
+	WCHAR dir[MAX_PATH] = L"";
+	PIDLIST_ABSOLUTE pidl;
+	if (SUCCEEDED(GetCurrentFolderPidl(&pidl)))
+	{
+		if (SHGetPathFromIDListW(pidl, dir) && PathIsDirectoryW(dir))
+		{
+			info.lpDirectory = dir;
+		}
+	}
+
+	if (!::ShellExecuteExW(&info))
+		return E_FAIL;
+
+	// We want to put the original text of the address bar back once the command
+	// is done executing.
+	RefreshCurrentAddress();
+
+	return S_OK;
+}
+
+/*
+ * GetCurrentFolderPidl: Get the current folder or shell view as a pointer to
+ *                       an absolute item ID list.
+ * 
+ * That is, a unique identifier of the current location used internally by the
+ * Shell API.
+ * 
+ * See: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/cc144089(v=vs.85)
+ */
+HRESULT AddressBar::GetCurrentFolderPidl(PIDLIST_ABSOLUTE *pidlOut)
+{
+	CComPtr<IShellView> pView;
+
+	if (m_pShellBrowser)
+	{
+		m_pShellBrowser->QueryActiveShellView(&pView);
+
+		if (pView)
+		{
+			CComQIPtr<IFolderView> pView2(pView);
+
+			if (pView2)
+			{
+				CComPtr<IPersistFolder2> pFolder;
+				pView2->GetFolder(IID_IPersistFolder2, (void **)&pFolder);
+
+				if (pFolder)
+				{
+					return pFolder->GetCurFolder(pidlOut); // should return S_OK
+				}
+			}
+		}
+	}
+
+	return E_FAIL;
+}
+
+/*
+ * GetCurrentFolderName: Get the display name of the current folder.
+ * 
+ * This is used as a fallback in case the path of the folder cannot be obtained,
+ * or in the case of Known Folders which should always show their display name
+ * (for example, the user's Documents folder).
+ */
+HRESULT AddressBar::GetCurrentFolderName(WCHAR *pszName, long length)
+{
+	HRESULT hr = NULL;
+
+	CComPtr<IShellFolder> pShellFolder;
+	PCITEMID_CHILD pidlChild;
+
+	PIDLIST_ABSOLUTE pidlCurFolder;
+	hr = GetCurrentFolderPidl(&pidlCurFolder);
+
+	if (hr != S_OK)
+		return hr;
+
+	hr = SHBindToParent(
+		pidlCurFolder,
+		IID_IShellFolder,
+		(void **)&pShellFolder,
+		&pidlChild
+	);
+
+	if (hr != S_OK)
+		return hr;
+
+	STRRET ret;
+	hr = pShellFolder->GetDisplayNameOf(
+		pidlChild,
+		SHGDN_FORADDRESSBAR | SHGDN_FORPARSING,
+		&ret
+	);
+
+	if (hr != S_OK)
+		return hr;
+
+	hr = StrRetToBuf(&ret, pidlChild, pszName, length);
+
+	if (hr != S_OK)
+		return hr;
+
+	return S_OK;
+}

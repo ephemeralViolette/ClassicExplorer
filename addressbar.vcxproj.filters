@@ -1,0 +1,126 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Generated Files">
+      <UniqueIdentifier>{5be967a4-2973-42b4-aa2e-5b86c801eb99}</UniqueIdentifier>
+      <SourceControlFiles>False</SourceControlFiles>
+    </Filter>
+    <Filter Include="Resource Files\Default Resources">
+      <UniqueIdentifier>{3628e8a6-11a2-416e-bdf4-fc32cb4499a5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Address Bar">
+      <UniqueIdentifier>{fd1ec9bc-2bb4-4f7b-aa48-d39ac7f99923}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Throbber">
+      <UniqueIdentifier>{f5eceeca-09b0-4c24-8186-a2ded08f4e0e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Main">
+      <UniqueIdentifier>{74770404-dddc-4d3b-9511-78e68b3e77c9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ClassicExplorer_i.h">
+      <Filter>Generated Files</Filter>
+    </ClInclude>
+    <ClInclude Include="stdafx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AddressBar.h">
+      <Filter>Source Files\Address Bar</Filter>
+    </ClInclude>
+    <ClInclude Include="dllmain.h">
+      <Filter>Source Files\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="shell_helpers.h">
+      <Filter>Source Files\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="util.h">
+      <Filter>Source Files\Main</Filter>
+    </ClInclude>
+    <ClInclude Include="ThrobberBand.h">
+      <Filter>Source Files\Throbber</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ClassicExplorer_i.c">
+      <Filter>Generated Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AddressBar.cpp">
+      <Filter>Source Files\Address Bar</Filter>
+    </ClCompile>
+    <ClCompile Include="ThrobberBand.cpp">
+      <Filter>Source Files\Throbber</Filter>
+    </ClCompile>
+    <ClCompile Include="dllmain.cpp">
+      <Filter>Source Files\Main</Filter>
+    </ClCompile>
+    <ClCompile Include="util.cpp">
+      <Filter>Source Files\Main</Filter>
+    </ClCompile>
+    <ClCompile Include="shell_helpers.cpp">
+      <Filter>Source Files\Main</Filter>
+    </ClCompile>
+    <ClCompile Include="AddressBarHostBand.cpp">
+      <Filter>Source Files\Address Bar</Filter>
+    </ClCompile>
+    <ClCompile Include="AddressBarHostBand.h">
+      <Filter>Source Files\Address Bar</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="ClassicExplorer.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ClassicExplorer.rgs">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="ClassicExplorer.def">
+      <Filter>Source Files\Main</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="DefaultResources\go_active.bmp">
+      <Filter>Resource Files\Default Resources</Filter>
+    </Image>
+    <Image Include="DefaultResources\go_inactive.bmp">
+      <Filter>Resource Files\Default Resources</Filter>
+    </Image>
+    <Image Include="DefaultResources\throbber_s1.bmp">
+      <Filter>Resource Files\Default Resources</Filter>
+    </Image>
+    <Image Include="DefaultResources\throbber_s0.bmp">
+      <Filter>Resource Files\Default Resources</Filter>
+    </Image>
+    <Image Include="DefaultResources\throbber_s2.bmp">
+      <Filter>Resource Files\Default Resources</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="ClassicExplorer.idl">
+      <Filter>Source Files\Main</Filter>
+    </Midl>
+  </ItemGroup>
+</Project>

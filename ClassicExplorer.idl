@@ -1,0 +1,53 @@
+// addressbar.idl : IDL source for addressbar
+//
+
+// This file will be processed by the MIDL tool to
+// produce the type library (addressbar.tlb) and marshalling code.
+
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+	object,
+	uuid(31371D7C-E550-4870-A3D2-6C3A1A553168),
+	dual,
+	nonextensible,
+	helpstring("IAddressBarHostBand Interface"),
+	pointer_default(unique)
+]
+interface IAddressBarHostBand : IDispatch {};
+
+[
+	object,
+	uuid(3E0BC6FD-A487-4438-B669-859D38F594A2),
+	dual,
+	nonextensible,
+	helpstring("IThrobberBand Interface"),
+	pointer_default(unique)
+]
+interface IThrobberBand : IDispatch {};
+
+[
+	uuid(205F9779-62D5-4E06-8DAD-8E150FFA38DB),
+	version(1.0),
+]
+library AddressBarLib
+{
+	importlib("stdole2.tlb");
+
+	[
+		uuid(FC5A7312-CFFE-4BF1-83E8-22D44C040568)
+	]
+	coclass AddressBarHostBand
+	{
+		[default] interface IAddressBarHostBand;
+	};
+
+	[
+		uuid(9F7E1105-EB11-4A41-857A-F7E1494D3818)
+	]
+	coclass ThrobberBand
+	{
+		[default] interface IThrobberBand;
+	};
+};
